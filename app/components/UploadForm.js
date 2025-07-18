@@ -89,7 +89,7 @@ export default function UploadForm() {
       )}
 
       {!loading && images.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        <div className="grid grid-cols-2 gap:3 md:gap-6 mt-6">
           {images.map((img, i) => (
             <div key={i} className="relative group">
               <img
