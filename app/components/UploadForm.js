@@ -2,23 +2,25 @@
 import { useState } from 'react';
 
 export default function UploadForm() {
-  const [modelFile, setModelFile] = useState(null);
-  const [clothingFile, setClothingFile] = useState(null);
+  const [modelImage, setModelImage] = useState(null);
+  const [itemImage, setItemImage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [images, setImages] = useState(null);
+  const [images, setImages] = useState([]);
   const [error, setError] = useState(null);
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!modelFile || !clothingFile) return;
+  const handleFileChange = (e, setter) => {
+    setter(e.target.files[0]);
+  };
 
-    setLoading(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setError(null);
-    setImages(null);
+    setImages([]);
+    setLoading(true);
 
     const formData = new FormData();
-    formData.append('model', modelFile);
-    formData.append('clothing', clothingFile);
+    formData.append('model', modelImage);
+    formData.append('clothing', itemImage);
 
     try {
       const res = await fetch('/api/generate', {
@@ -27,14 +29,15 @@ export default function UploadForm() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
 
-      setImages({
-        frontModel: data.frontImageBase64,
-        backModel: data.backImageBase64,
-        frontClothing: data.clothingFrontBase64,
-        backClothing: data.clothingBackBase64,
-      });
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+
+      setImages([
+        `data:image/png;base64,${data.frontImageBase64}`,
+        `data:image/png;base64,${data.backImageBase64}`,
+        `data:image/png;base64,${data.clothingFrontBase64}`,
+        `data:image/png;base64,${data.clothingBackBase64}`,
+      ]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -42,56 +45,63 @@ export default function UploadForm() {
     }
   };
 
-  const downloadImage = (base64, filename) => {
-    const a = document.createElement('a');
-    a.href = `data:image/png;base64,${base64}`;
-    a.download = filename;
-    a.click();
-  };
-
   return (
-    <div className="p-4">
-      <form onSubmit={handleUpload} className="space-y-4">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setModelFile(e.target.files[0])}
-        />
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setClothingFile(e.target.files[0])}
-        />
+    <div className="w-full max-w-md bg-white p-6 rounded-2xl shadow-md border border-gray-200">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="mb-4">
+          <label className="block text-lg font-semibold mb-2">Model Photo</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleFileChange(e, setModelImage)}
+            required
+            className="w-full border px-3 py-2 rounded"
+          />
+        </div>
+
+        <div>
+          <label className="block text-lg font-semibold mb-2">Clothing Item</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleFileChange(e, setItemImage)}
+            required
+            className="w-full border px-3 py-2 rounded"
+          />
+        </div>
+
         <button
           type="submit"
           disabled={loading}
-          className="bg-secondary text-primary font-bold px-4 py-2"
+          className="w-full bg-[#B4A29B] text-white py-2 rounded font-bold hover:bg-[#a89891] transition"
         >
-          {loading ? 'Generating...' : 'Generate'}
+          {loading ? 'Generating...' : 'Generate Images'}
         </button>
-        {error && <p className="text-red-600 font-bold">{error}</p>}
       </form>
 
-      {images && (
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          {[
-            { label: 'Model – Front View', key: 'frontModel' },
-            { label: 'Model – Back View', key: 'backModel' },
-            { label: 'Clothing – Front View', key: 'frontClothing' },
-            { label: 'Clothing – Back View', key: 'backClothing' },
-          ].map(({ label, key }) => (
-            <div key={key} className="relative">
-              <p className="font-bold mb-2">{label}</p>
+      {error && <p className="text-red-500 mt-4 text-md">{error}</p>}
+
+      {loading && (
+        <div className="flex justify-center mt-6 animate-pulse space-x-4">
+          <div className="w-32 h-32 bg-gray-300 rounded-md" />
+          <div className="w-32 h-32 bg-gray-300 rounded-md" />
+        </div>
+      )}
+
+      {!loading && images.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          {images.map((img, i) => (
+            <div key={i} className="relative group">
               <img
-                src={`data:image/png;base64,${images[key]}`}
-                alt={label}
-                className="w-full h-auto rounded"
+                src={img}
+                alt={`Generated ${i + 1}`}
+                className="rounded-md border w-full object-cover max-w-[400px]"
               />
-              <button
-                type="button"
-                onClick={() => downloadImage(images[key], `${label}.png`)}
-                className="absolute top-2 right-2 bg-primary text-white rounded-full p-2 hover:bg-secondary focus:outline-none"
-                aria-label={`Download ${label}`}
+              <a
+                href={img}
+                download={`generated-${i + 1}.png`}
+                className="absolute top-2 right-2 bg-primary text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition"
+                aria-label="Download image"
               >
                 <svg
                   className="w-5 h-5"
@@ -106,7 +116,7 @@ export default function UploadForm() {
                     d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"
                   />
                 </svg>
-              </button>
+              </a>
             </div>
           ))}
         </div>
