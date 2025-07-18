@@ -1,6 +1,5 @@
-import { OpenAI } from 'openai';
+import { OpenAI, toFile } from 'openai';
 import { buildTryOnPrompt } from '../../lib/promptBuilder';
-import { analyzeImage } from '../../lib/analyzeImage';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -12,64 +11,61 @@ export async function POST(req) {
     const modelImage = formData.get('model');
     const clothingImage = formData.get('clothing');
 
-    const modelBuffer = Buffer.from(await modelImage.arrayBuffer());
-    const clothingBuffer = Buffer.from(await clothingImage.arrayBuffer());
-
     if (!modelImage || !clothingImage) {
       return new Response(JSON.stringify({ error: 'Both model and clothing images are required' }), {
         status: 400
       });
     }
 
-    const clothingDescription = await analyzeImage(clothingBuffer, 'clothing');
-    const personDescription = await analyzeImage(modelBuffer, 'model');
+    // Convert to OpenAI file objects using `toFile()`
+    const modelFile = await toFile(modelImage, modelImage.name || 'model.png', {
+      type: modelImage.type || 'image/png'
+    });
 
-    if (!clothingBuffer || !modelBuffer) {
-      return new Response(JSON.stringify({ error: 'Could not recognize the image' }), { status: 500 });
-    }
+    const clothingFile = await toFile(clothingImage, clothingImage.name || 'clothing.png', {
+      type: clothingImage.type || 'image/png'
+    });
 
+    const inputImages = [modelFile, clothingFile];
+
+    // Build prompts (no need to analyze image)
     const frontPrompt = buildTryOnPrompt({
       view: 'front',
-      clothingDescription,
-      personDescription
+      clothingDescription: '',
+      personDescription: ''
     });
 
     const backPrompt = buildTryOnPrompt({
       view: 'back',
-      clothingDescription,
-      personDescription
+      clothingDescription: '',
+      personDescription: ''
     });
 
-    // 🔁 Front View Generation
-    const frontRes = await openai.images.generate({
-      model: 'dall-e-3',
-      prompt: frontPrompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'url'
+    // 🔁 Generate front view image
+    const frontRes = await openai.images.edit({
+      model: 'gpt-image-1',
+      image: inputImages,
+      prompt: frontPrompt
     });
 
-    const frontImageUrl = frontRes.data[0]?.url;
-    console.log(frontImageUrl);
+    const frontImageBase64 = frontRes.data[0]?.b64_json;
 
-    // 🔁 Back View Generation
-    const backRes = await openai.images.generate({
-      model: 'dall-e-3',
-      prompt: backPrompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'url'
+    // 🔁 Generate back view image
+    const backRes = await openai.images.edit({
+      model: 'gpt-image-1',
+      image: inputImages,
+      prompt: backPrompt
     });
 
-    const backImageUrl = backRes.data[0]?.url;
-    console.log(frontImageUrl);
+    const backImageBase64 = backRes.data[0]?.b64_json;
 
-    if (!frontImageUrl || !backImageUrl) {
+    if (!frontImageBase64 || !backImageBase64) {
       return new Response(JSON.stringify({ error: 'Image generation failed' }), { status: 500 });
     }
 
+    // Return base64 images to frontend
     return new Response(
-      JSON.stringify({ frontImageUrl, backImageUrl }),
+      JSON.stringify({ frontImageBase64, backImageBase64 }),
       { headers: { 'Content-Type': 'application/json' } }
     );
 
